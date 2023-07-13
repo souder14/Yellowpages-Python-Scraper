@@ -51,15 +51,20 @@ def scrape_urls(urls):
         scraped_urls.extend(extracted_urls)
 
         # Print progress update
-        print(f"Scraped URLs from {index} out of {total_urls} URLs.")
+        print(f"Scraped URLs from {index} out of {total_urls} URLs. ({total_urls - index} URLs remaining)")
 
     with ThreadPoolExecutor() as executor:
         # Submit URL scraping tasks to the executor
         futures = [executor.submit(scrape_url, url, i+1) for i, url in enumerate(urls)]
 
-        # Wait for all tasks to complete
+        # Keep track of completed futures
+        completed_futures = []
         for future in futures:
-            future.result()
+            completed_futures.append(future)
+
+        # Wait for all tasks to complete
+        for completed_future in completed_futures:
+            completed_future.result()
 
     return scraped_urls
 
@@ -74,6 +79,12 @@ def add_custom_locations(locations_input):
     new_locations = [loc.strip() for loc in locations_input.split(",") if loc.strip()]
     location_terms_list.extend(new_locations)
     print("Custom locations added successfully.")
+
+def count_businesses(scraped_urls):
+    return len(scraped_urls)
+
+# Prompt the user to enter the number of links to generate
+num_links = int(input("How many links would you like to generate? "))
 
 # Prompt the user to enter the search terms separated by commas
 search_terms_input = input("Enter the search terms (separated by commas): (e.g., Hair Salon, Restaurant): ")
@@ -117,6 +128,10 @@ location_terms_list = [
     "Fredericksburg, VA"
 ]
 
+# Limit the number of generated URLs to the requested amount
+if num_links < len(search_terms) * len(location_terms_list):
+    location_terms_list = location_terms_list[:num_links // len(search_terms)]
+
 # Display the available location terms
 print("Choose an option:")
 print("1. Select all locations")
@@ -139,7 +154,9 @@ if option < 1 or option > 3:
 urls = []
 if option == 1:
     # Select all locations for each search term
-    urls = [base_url + quote(search_term) + quote(location_term.replace(" ", "+")) for search_term in search_terms for location_term in location_terms_list]
+    for search_term in search_terms:
+        for location_term in location_terms_list:
+            urls.append(base_url + quote(search_term) + quote(location_term.replace(" ", "+")))
 elif option == 2:
     # Select specific locations for each search term
     print("Choose the locations (separated by commas):")
@@ -153,7 +170,8 @@ elif option == 2:
             index = int(selected_location.strip()) - 1
             if index >= 0 and index < len(location_terms_list):
                 location = location_terms_list[index]
-                urls.extend([base_url + quote(search_term) + quote(location.replace(" ", "+")) for search_term in search_terms])
+                for search_term in search_terms:
+                    urls.append(base_url + quote(search_term) + quote(location.replace(" ", "+")))
             else:
                 print("Invalid location selection!")
                 sys.exit()
@@ -165,14 +183,11 @@ elif option == 3:
     custom_locations_input = input("Enter the custom locations (separated by commas): ")
     add_custom_locations(custom_locations_input)
 
-# Get the count of search terms and selected locations
-search_terms_count = len(search_terms)
-locations_count = len(urls) // search_terms_count
-
 # Calculate the number of possible URLs
-possible_urls_count = calculate_possible_urls(search_terms_count, locations_count)
+possible_urls_count = len(search_terms) * len(location_terms_list)
+if option == 2:
+    possible_urls_count = len(search_terms) * len(selected_locations)
 
-# Print the count of possible URLs
 print(f"\nPossible URLs: {possible_urls_count}")
 
 # Ask if the user wants to continue processing the URLs
@@ -193,6 +208,10 @@ except Exception as e:
     print(f"Error occurred while scraping URLs: {e}")
     sys.exit()
 
+# Count the number of businesses found
+total_businesses_found = count_businesses(scraped_urls)
+print(f"Total businesses found: {total_businesses_found}")
+
 # Export the scraped URLs to a CSV file named "urls.csv"
 csv_file_name = "urls.csv"
 try:
@@ -200,7 +219,6 @@ try:
         writer = csv.writer(file)
         writer.writerow(["Scraped URLs"])
         writer.writerows([[url] for url in scraped_urls])
-    print(f"\nPossible URLs: {possible_urls_count}")
     print(f"Scraped URLs exported to {csv_file_name}.")
 except Exception as e:
     print(f"Failed to export scraped URLs to {csv_file_name}. Error: {e}")
