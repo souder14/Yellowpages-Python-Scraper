@@ -1,3 +1,7 @@
+# This script scrapes business URLs from Yellow Pages using asyncio. It gets search
+# terms and locations from the user, generates URLs, scrapes them asynchronously
+# while handling failures, exports results to CSV, and tracks metrics.
+
 import csv
 import asyncio
 import aiohttp
