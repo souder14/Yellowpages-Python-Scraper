@@ -39,7 +39,7 @@ Highlighted Features of the Code:
 
 >Web Page Scraping: The scripts utilize the BeautifulSoup library to scrape HTML content from web pages. This allows extraction of various contact information such as business names, phone numbers, emails, addresses, etc.
 
->CSV Data Storage: The scraped contact information is saved to CSV files, providing a structured format for easy access and analysis. Each script saves the relevant data to separate CSV files.
+>CSV Data Storage: The scraped contact information is saved to CSV files, providing a structured format for easy access and analysis. Each script saves the relevant data to separate CSV files. The links are saved as they are generated to prevent data loss and corruption. 
 
 >Business Website Crawling: The business website crawler script leverages the Selenium library to crawl and interact with business websites. It simulates clicking on the "Visit Website" link to access the respective business sites for further data extraction.
 
