@@ -1,119 +1,170 @@
+# This script scrapes business information like phone numbers, emails, Instagram URLs
+# etc. from Yellow Pages using Selenium. It gets URLs from an input CSV, launches
+# Chrome in headless mode, visits each URL, extracts data, clicks "Visit Website" links
+# to get additional info, and exports the results to a CSV file.
+
 import csv
 import re
-import time
-import random
-from urllib.parse import urljoin, quote
-from bs4 import BeautifulSoup
-from tqdm import tqdm
-from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import NoSuchElementException
+import os
+import sys
 
-MAX_DEPTH = 3  # Maximum depth limit for crawling
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-]
+# Function to scrape phone number, business name, email, and Instagram URL from a webpage
+def scrape_page(driver):
+    phone_number = driver.find_element(By.CLASS_NAME, 'phone.dockable').text.strip()
+    name = driver.find_element(By.CLASS_NAME, 'dockable.business-name').text.strip()
+    email = extract_emails(driver.page_source)
+    instagram_url = extract_instagram_url(driver.page_source)
 
-def scrape_page(url):
-    options = Options()
-    options.add_argument(f'user-agent={random.choice(USER_AGENTS)}')
-    service = Service('chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=options)
+    return phone_number, name, email, instagram_url
 
-    try:
+# Function to extract email addresses from text
+def extract_emails(text):
+    email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    image_extensions = ['.png', '.jpg', '.jpeg', '.gif']
+    emails = re.findall(email_regex, text)
+    filtered_emails = set(email for email in emails if not any(ext in email for ext in image_extensions))
+    return filtered_emails
+
+# Function to extract Instagram URL from text
+def extract_instagram_url(text):
+    instagram_regex = r'https?://(www\.)?instagram\.com/[A-Za-z0-9_]+/?'
+    instagram_urls = re.findall(instagram_regex, text)
+    return instagram_urls[0] if instagram_urls else ''
+
+# Function to clean up the text before saving to the CSV file
+def clean_text(text):
+    cleaned_text = text.strip()
+    cleaned_text = re.sub(r'\s+', ' ', cleaned_text)  # Remove extra whitespaces
+    return cleaned_text
+
+# Function to get the website name from a URL
+def get_website_name(url):
+    parsed_url = urlparse(url)
+    return parsed_url.netloc
+
+# Path to the CSV file containing the URLs
+csv_file = 'the_scraped_urls.csv'
+
+# Get the path of the current directory
+current_directory = os.path.dirname(os.path.abspath(__file__))
+
+# Path to the Chrome web driver executable
+driver_path = os.path.join(current_directory, 'chromedriver.exe')
+
+# Initialize the Service object with the path to the ChromeDriver executable
+service = Service(driver_path)
+
+# Initialize the ChromeOptions object
+chrome_options = Options()
+chrome_options.add_argument('--ignore-certificate-errors')
+chrome_options.add_argument('--ignore-ssl-errors')
+chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])  # Suppress log messages
+chrome_options.add_argument('--headless')  # Run Chrome in headless mode
+
+# Redirect error output to null device
+sys.stderr = open(os.devnull, 'w')
+
+# Initialize the web driver with ChromeOptions
+driver = webdriver.Chrome(service=service, options=chrome_options)
+
+# Open the business_info.csv file for writing
+business_info_file = open(os.path.join(current_directory, 'business_info.csv'), 'w', newline='')
+csv_writer = csv.writer(business_info_file)
+csv_writer.writerow(['Combined Phone', 'Name', 'Email', 'Address', 'Instagram URL'])
+
+# Read the URLs from the CSV file and visit each one
+with open(os.path.join(current_directory, csv_file), 'r') as file:
+    reader = csv.reader(file)
+    next(reader)  # Skip the header row if present
+
+    urls = list(reader)
+    total_urls = len(urls)
+
+    rows_to_write = []  # Accumulate rows to write in batches
+
+    for i, row in enumerate(urls, 1):
+        url = row[0]
+        print(f'Crawling {url}...')
+
         driver.get(url)
-        phone_numbers = driver.find_elements(By.CLASS_NAME, 'phone.dockable')
-        business_names = driver.find_elements(By.CLASS_NAME, 'dockable.business-name')
 
-        phone_number = phone_numbers[0].text.strip() if phone_numbers else ''
-        name = business_names[0].text.strip() if business_names else ''
+        print(f'Processing URL {i}/{total_urls} - {url}')
 
-        return phone_number, name
+        # Scrape phone number, business name, email, and Instagram URL
+        try:
+            phone, name, email, instagram_url = scrape_page(driver)
+            phone = clean_text(phone)
+            name = clean_text(name)
+            email = [clean_text(e) for e in email]
+            instagram_url = clean_text(instagram_url)
+            rows_to_write.append([phone, name, ', '.join(email), get_website_name(url), instagram_url])
+            print(f'Scraped phone: {phone}')
+            print(f'Scraped name: {name}')
+            print(f'Scraped email: {", ".join(email)}')
+            print(f'Website: {get_website_name(url)}')
+            print(f'Instagram URL: {instagram_url}')
+        except Exception as e:
+            print(f'Error scraping page: {e}')
 
-    except Exception as e:
-        print(f'Error scraping page: {e}')
-        return '', ''
+        # Click the "Visit Website" link if present
+        try:
+            website_link = driver.find_element(By.CLASS_NAME, 'website-link.dockable')
+            actions = ActionChains(driver)
+            actions.move_to_element(website_link).perform()
+            website_link.click()
 
-    finally:
-        driver.quit()
+            # Wait for the new page to load
+            WebDriverWait(driver, 10).until(EC.number_of_windows_to_be(2))
+            driver.switch_to.window(driver.window_handles[1])  # Switch to the new window/tab
 
-def get_urls(base_url, depth=1):
-    urls = []
+            # Scrape email addresses from the website
+            try:
+                email = extract_emails(driver.page_source)
+                if email:
+                    email = [clean_text(e) for e in email]
+                    rows_to_write.append(['', '', ', '.join(email), get_website_name(driver.current_url), ''])
+                    print(f'Scraped email (Website): {", ".join(email)}')
+                    print(f'Website: {get_website_name(driver.current_url)}')
+            except Exception as e:
+                print(f'Error scraping email from website: {e}')
 
-    options = Options()
-    options.add_argument(f'user-agent={random.choice(USER_AGENTS)}')
-    service = Service('chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=options)
+            # Scrape Instagram URL from the website
+            try:
+                instagram_url = extract_instagram_url(driver.page_source)
+                if instagram_url and 'instagram.com' in instagram_url:
+                    instagram_url = clean_text(instagram_url)
+                    rows_to_write.append(['', '', '', '', instagram_url])
+                    print(f'Instagram URL (Website): {instagram_url}')
+            except Exception as e:
+                print(f'Error scraping Instagram URL from website: {e}')
 
-    try:
-        driver.get(base_url)
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'business-name')))
+            driver.close()  # Close the new window/tab
+            driver.switch_to.window(driver.window_handles[0])  # Switch back to the original window/tab
+        except NoSuchElementException:
+            print('No "Visit Website" link found.')
 
-        business_names = driver.find_elements(By.CLASS_NAME, 'business-name')
-        extracted_urls = [urljoin(base_url, a.get_attribute('href')) for a in business_names]
+        print()  # Add a blank line for readability
 
-        urls.extend(extracted_urls)
+        # Write rows in batches
+        if len(rows_to_write) >= 100:
+            csv_writer.writerows(rows_to_write)
+            rows_to_write = []
 
-        if depth < MAX_DEPTH:
-            next_link = driver.find_element(By.CLASS_NAME, 'next')
-            next_url = next_link.get_attribute('href')
-            if next_url:
-                urls.extend(get_urls(next_url, depth + 1))
+    # Write any remaining rows
+    if rows_to_write:
+        csv_writer.writerows(rows_to_write)
 
-    except Exception as e:
-        print(f'Error getting URLs: {e}')
+# Close the business_info.csv file
+business_info_file.close()
 
-    finally:
-        driver.quit()
-
-    return urls
-
-def scrape_urls(urls):
-    scraped_data = []
-    for url in tqdm(urls, desc='Scraping URLs'):
-        phone_number, name = scrape_page(url)
-        scraped_data.append((phone_number, name, url))
-    return scraped_data
-
-def remove_duplicates(data):
-    seen = set()
-    unique_data = []
-    for item in data:
-        if item[2] not in seen:
-            seen.add(item[2])
-            unique_data.append(item)
-    return unique_data
-
-def save_data_to_csv(data):
-    timestamp = time.strftime('%Y%m%d%H%M%S')
-    file_name = f'business_info_{timestamp}.csv'
-    with open(file_name, 'w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Phone', 'Name', 'URL'])
-        writer.writerows(data)
-    print(f'Data saved to {file_name}')
-
-if __name__ == '__main__':
-    base_url = 'https://www.yellowpages.com/search?search_terms={}&geo_location_terms='
-
-    search_terms_input = input("Enter the search terms (separated by commas): ")
-    search_terms = [term.strip() for term in search_terms_input.split(",")]
-    urls = [base_url.format(quote(term)) for term in search_terms]
-
-    data = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = executor.map(get_urls, urls)
-        for result in results:
-            data.extend(result)
-
-    unique_data = remove_duplicates(data)
-    scraped_data = scrape_urls(unique_data)
-    save_data_to_csv(scraped_data)
+# Close the browser window
+driver.quit()
