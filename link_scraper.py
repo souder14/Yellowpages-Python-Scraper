@@ -6,18 +6,23 @@ import keyboard
 import requests
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 
 session = requests.Session()
 
 # Rate limiting settings
-REQUEST_DELAY = .5  # Delay in seconds between requests
+REQUEST_DELAY = 1  # Delay in seconds between requests
 
 # Function to scrape URLs
 def scrape_urls(urls):
     scraped_urls = []
     total_urls = len(urls)
+    csv_file_name = "urls.csv"
+    csv_lock = Lock()
 
     def scrape_url(url, index):
+        nonlocal scraped_urls
+
         # Send a GET request to the specified URL with rate limiting
         print(f"Scraping URL: {url}")
         retries = 3  # Maximum number of retries
@@ -50,6 +55,15 @@ def scrape_urls(urls):
         print(f"Extracted {len(extracted_urls)} URLs")
         scraped_urls.extend(extracted_urls)
 
+        # Write the scraped URLs to the CSV file (thread-safe)
+        with csv_lock:
+            try:
+                with open(csv_file_name, 'a', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    writer.writerows([[url] for url in extracted_urls])
+            except Exception as e:
+                print(f"Failed to write scraped URLs to {csv_file_name}. Error: {e}")
+
         # Print progress update
         print(f"Scraped URLs from {index} out of {total_urls} URLs. ({total_urls - index} URLs remaining)")
 
@@ -67,6 +81,8 @@ def scrape_urls(urls):
             completed_future.result()
 
     return scraped_urls
+
+# Rest of the code...
 
 def remove_duplicates(urls):
     return list(set(urls))
