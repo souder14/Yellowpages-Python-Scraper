@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 session = requests.Session()
 
 # Rate limiting settings
-REQUEST_DELAY = 1  # Delay in seconds between requests
+REQUEST_DELAY = .5  # Delay in seconds between requests
 
 # Function to scrape URLs
 def scrape_urls(urls):
@@ -83,8 +83,17 @@ def add_custom_locations(locations_input):
 def count_businesses(scraped_urls):
     return len(scraped_urls)
 
+def time_taken(start_time):
+    end_time = time.time()
+    duration = end_time - start_time
+    minutes = int(duration // 60)
+    seconds = int(duration % 60)
+    print(f"Script execution time: {minutes} minutes {seconds} seconds")
+
 # Prompt the user to enter the number of links to generate
-num_links = int(input("How many links would you like to generate? "))
+num_links = input("How many links would you like to generate? (Enter '0' for unlimited): ")
+if num_links != '0':
+    num_links = int(num_links)
 
 # Prompt the user to enter the search terms separated by commas
 search_terms_input = input("Enter the search terms (separated by commas): (e.g., Hair Salon, Restaurant): ")
@@ -129,7 +138,7 @@ location_terms_list = [
 ]
 
 # Limit the number of generated URLs to the requested amount
-if num_links < len(search_terms) * len(location_terms_list):
+if num_links != '0' and num_links < len(search_terms) * len(location_terms_list):
     location_terms_list = location_terms_list[:num_links // len(search_terms)]
 
 # Display the available location terms
@@ -203,14 +212,14 @@ urls = remove_duplicates(urls)
 
 # Scrape URLs from the modified URLs
 try:
+    start_time = time.time()
     scraped_urls = scrape_urls(urls)
+    total_businesses_found = count_businesses(scraped_urls)
+    time_taken(start_time)
+    print(f"Total businesses found: {total_businesses_found}")
 except Exception as e:
     print(f"Error occurred while scraping URLs: {e}")
     sys.exit()
-
-# Count the number of businesses found
-total_businesses_found = count_businesses(scraped_urls)
-print(f"Total businesses found: {total_businesses_found}")
 
 # Export the scraped URLs to a CSV file named "urls.csv"
 csv_file_name = "urls.csv"
