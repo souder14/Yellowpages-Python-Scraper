@@ -1,6 +1,8 @@
 # Yellowpages-Python-Scraper
 A Python-based web scraping tool to extract contact information for local businesses from Yellowpages.com
 
+![image](https://github.com/souder14/Yellowpages-Python-Scraper/assets/1723741/0cdddb78-df7c-446c-8dd4-c1ad54eecd52)
+
 
 I have developed a set of Python scripts that facilitate web scraping of contact information for local businesses from Yellowpages.com and business websites. The purpose of these scripts is to gather phone numbers, emails, addresses, and other relevant contact details for reaching out to businesses regarding an app that I am creating.
 
