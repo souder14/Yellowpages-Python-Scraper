@@ -82,8 +82,6 @@ def scrape_urls(urls):
 
     return scraped_urls
 
-# Rest of the code...
-
 def remove_duplicates(urls):
     return list(set(urls))
 
